@@ -1,3 +1,4 @@
+from __future__ import print_function, division, absolute_import
 import argparse
 import os
 import shutil
@@ -52,7 +53,11 @@ parser.add_argument('--resume', default='', type=str, metavar='PATH',
 parser.add_argument('-e', '--evaluate', dest='evaluate', default=True,
                     action='store_true', help='evaluate model on validation set')
 parser.add_argument('--pretrained', default='imagenet', help='use pre-trained model')
-
+parser.add_argument('--do-not-preserve-aspect-ratio',
+                    dest='preserve_aspect_ratio',
+                    help='do not preserve the aspect ratio when resizing an image',
+                    action='store_false')
+parser.set_defaults(preserve_aspect_ratio=True)
 best_prec1 = 0
 
 
@@ -98,7 +103,7 @@ def main():
     #     batch_size=args.batch_size, shuffle=True,
     #     num_workers=args.workers, pin_memory=True)
 
-    
+
 
     # if 'scale' in pretrainedmodels.pretrained_settings[args.arch][args.pretrained]:
     #     scale = pretrainedmodels.pretrained_settings[args.arch][args.pretrained]['scale']
@@ -110,7 +115,11 @@ def main():
         int(round(max(model.input_size) / scale)),
         model.input_size))
 
-    val_tf = pretrainedmodels.utils.TransformImage(model, scale=scale)
+    val_tf = pretrainedmodels.utils.TransformImage(
+        model,
+        scale=scale,
+        preserve_aspect_ratio=args.preserve_aspect_ratio
+    )
 
     val_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(valdir, val_tf),
@@ -165,7 +174,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        target = target.cuda(async=True)
+        target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
@@ -200,48 +209,47 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
 
 def validate(val_loader, model, criterion):
-    batch_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
+    with torch.no_grad():
+        batch_time = AverageMeter()
+        losses = AverageMeter()
+        top1 = AverageMeter()
+        top5 = AverageMeter()
 
-    # switch to evaluate mode
-    model.eval()
+        # switch to evaluate mode
+        model.eval()
 
-    end = time.time()
-    for i, (input, target) in enumerate(val_loader):
-        target = target.cuda()
-        input = input.cuda()
-        input_var = torch.autograd.Variable(input, volatile=True)
-        target_var = torch.autograd.Variable(target, volatile=True)
-
-        # compute output
-        output = model(input_var)
-        loss = criterion(output, target_var)
-
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
         end = time.time()
+        for i, (input, target) in enumerate(val_loader):
+            target = target.cuda()
+            input = input.cuda()
 
-        if i % args.print_freq == 0:
-            print('Test: [{0}/{1}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   i, len(val_loader), batch_time=batch_time, loss=losses,
-                   top1=top1, top5=top5))
+            # compute output
+            output = model(input)
+            loss = criterion(output, target)
 
-    print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
-          .format(top1=top1, top5=top5))
+            # measure accuracy and record loss
+            prec1, prec5 = accuracy(output.data, target.data, topk=(1, 5))
+            losses.update(loss.data[0], input.size(0))
+            top1.update(prec1[0], input.size(0))
+            top5.update(prec5[0], input.size(0))
 
-    return top1.avg, top5.avg
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            if i % args.print_freq == 0:
+                print('Test: [{0}/{1}]\t'
+                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                      'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+                      'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                       i, len(val_loader), batch_time=batch_time, loss=losses,
+                       top1=top1, top5=top5))
+
+        print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+              .format(top1=top1, top5=top5))
+
+        return top1.avg, top5.avg
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):

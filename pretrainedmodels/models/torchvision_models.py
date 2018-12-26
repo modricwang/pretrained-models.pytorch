@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
-
+from __future__ import print_function, division, absolute_import
 import torchvision.models as models
 import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
+import types
+import re
 
 #################################################################
 # You can find the definitions of those models here:
@@ -29,10 +31,10 @@ __all__ = [
 
 model_urls = {
     'alexnet': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
-    'densenet121': 'https://download.pytorch.org/models/densenet121-241335ed.pth',
-    'densenet169': 'https://download.pytorch.org/models/densenet169-6f0f7f60.pth',
-    'densenet201': 'https://download.pytorch.org/models/densenet201-4c113574.pth',
-    'densenet161': 'https://download.pytorch.org/models/densenet161-17b70270.pth',   
+    'densenet121': 'http://data.lip6.fr/cadene/pretrainedmodels/densenet121-fbdb23505.pth',
+    'densenet169': 'http://data.lip6.fr/cadene/pretrainedmodels/densenet169-f470b90a4.pth',
+    'densenet201': 'http://data.lip6.fr/cadene/pretrainedmodels/densenet201-5750cbb1e.pth',
+    'densenet161': 'http://data.lip6.fr/cadene/pretrainedmodels/densenet161-347e6b360.pth',
     'inceptionv3': 'https://download.pytorch.org/models/inception_v3_google-1a9a5a14.pth',
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
@@ -93,10 +95,27 @@ for model_name in __all__:
 #         'num_classes': 1000
 #     }
 
+def update_state_dict(state_dict):
+    # '.'s are no longer allowed in module names, but pervious _DenseLayer
+    # has keys 'norm.1', 'relu.1', 'conv.1', 'norm.2', 'relu.2', 'conv.2'.
+    # They are also in the checkpoints in model_urls. This pattern is used
+    # to find such keys.
+    pattern = re.compile(
+        r'^(.*denselayer\d+\.(?:norm|relu|conv))\.((?:[12])\.(?:weight|bias|running_mean|running_var))$')
+    for key in list(state_dict.keys()):
+        res = pattern.match(key)
+        if res:
+            new_key = res.group(1) + res.group(2)
+            state_dict[new_key] = state_dict[key]
+            del state_dict[key]
+    return state_dict
+
 def load_pretrained(model, num_classes, settings):
     assert num_classes == settings['num_classes'], \
         "num_classes should be {}, but is {}".format(settings['num_classes'], num_classes)
-    model.load_state_dict(model_zoo.load_url(settings['url']))
+    state_dict = model_zoo.load_url(settings['url'])
+    state_dict = update_state_dict(state_dict)
+    model.load_state_dict(state_dict)
     model.input_space = settings['input_space']
     model.input_size = settings['input_size']
     model.input_range = settings['input_range']
@@ -123,7 +142,7 @@ def modify_alexnet(model):
     def features(self, input):
         x = self._features(input)
         x = x.view(x.size(0), 256 * 6 * 6)
-        x = self.dropout0(x) 
+        x = self.dropout0(x)
         x = self.linear0(x)
         x = self.relu0(x)
         x = self.dropout1(x)
@@ -139,11 +158,11 @@ def modify_alexnet(model):
         x = self.features(input)
         x = self.logits(x)
         return x
-        
+
     # Modify methods
-    setattr(model.__class__, 'features', features)
-    setattr(model.__class__, 'logits', logits)
-    setattr(model.__class__, 'forward', forward)
+    model.features = types.MethodType(features, model)
+    model.logits = types.MethodType(logits, model)
+    model.forward = types.MethodType(forward, model)
     return model
 
 def alexnet(num_classes=1000, pretrained='imagenet'):
@@ -179,8 +198,8 @@ def modify_densenets(model):
         return x
 
     # Modify methods
-    setattr(model.__class__, 'logits', logits)
-    setattr(model.__class__, 'forward', forward)
+    model.logits = types.MethodType(logits, model)
+    model.forward = types.MethodType(forward, model)
     return model
 
 def densenet121(num_classes=1000, pretrained='imagenet'):
@@ -282,11 +301,11 @@ def inceptionv3(num_classes=1000, pretrained='imagenet'):
         x = self.features(input)
         x = self.logits(x)
         return x
-        
+
     # Modify methods
-    setattr(model.__class__, 'features', features)
-    setattr(model.__class__, 'logits', logits)
-    setattr(model.__class__, 'forward', forward)  
+    model.features = types.MethodType(features, model)
+    model.logits = types.MethodType(logits, model)
+    model.forward = types.MethodType(forward, model)
     return model
 
 ###############################################################
@@ -321,9 +340,9 @@ def modify_resnets(model):
         return x
 
     # Modify methods
-    setattr(model.__class__, 'features', features)
-    setattr(model.__class__, 'logits', logits)
-    setattr(model.__class__, 'forward', forward)  
+    model.features = types.MethodType(features, model)
+    model.logits = types.MethodType(logits, model)
+    model.forward = types.MethodType(forward, model)
     return model
 
 def resnet18(num_classes=1000, pretrained='imagenet'):
@@ -400,10 +419,10 @@ def modify_squeezenets(model):
         x = self.features(input)
         x = self.logits(x)
         return x
-        
+
     # Modify methods
-    setattr(model.__class__, 'logits', logits)
-    setattr(model.__class__, 'forward', forward)  
+    model.logits = types.MethodType(logits, model)
+    model.forward = types.MethodType(forward, model)
     return model
 
 def squeezenet1_0(num_classes=1000, pretrained='imagenet'):
@@ -452,7 +471,7 @@ def modify_vggs(model):
         x = x.view(x.size(0), -1)
         x = self.linear0(x)
         x = self.relu0(x)
-        x = self.dropout0(x) 
+        x = self.dropout0(x)
         x = self.linear1(x)
         return x
 
@@ -466,11 +485,11 @@ def modify_vggs(model):
         x = self.features(input)
         x = self.logits(x)
         return x
-        
+
     # Modify methods
-    setattr(model.__class__, 'features', features)
-    setattr(model.__class__, 'logits', logits)
-    setattr(model.__class__, 'forward', forward)  
+    model.features = types.MethodType(features, model)
+    model.logits = types.MethodType(logits, model)
+    model.forward = types.MethodType(forward, model)
     return model
 
 def vgg11(num_classes=1000, pretrained='imagenet'):

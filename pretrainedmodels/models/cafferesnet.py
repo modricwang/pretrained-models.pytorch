@@ -1,3 +1,4 @@
+from __future__ import print_function, division, absolute_import
 import math
 import torch
 import torch.nn as nn
@@ -7,7 +8,7 @@ import torch.utils.model_zoo as model_zoo
 pretrained_settings = {
     'cafferesnet101': {
         'imagenet': {
-            'url': 'http://data.lip6.fr/cadene/pretrainedmodels/cafferesnet101-9cf32c75.pth',
+            'url': 'http://data.lip6.fr/cadene/pretrainedmodels/cafferesnet101-9d633cc0.pth',
             'input_space': 'BGR',
             'input_size': [3, 224, 224],
             'input_range': [0, 255],
@@ -113,7 +114,7 @@ class ResNet(nn.Module):
     # it is slightly better whereas slower to set stride = 1
     # self.layer4 = self._make_layer(block, 512, layers[3], stride=1)
     self.avgpool = nn.AvgPool2d(7)
-    self.fc = nn.Linear(512 * block.expansion, num_classes)
+    self.last_linear = nn.Linear(512 * block.expansion, num_classes)
 
     for m in self.modules():
       if isinstance(m, nn.Conv2d):
@@ -140,7 +141,7 @@ class ResNet(nn.Module):
 
     return nn.Sequential(*layers)
 
-  def forward(self, x):
+  def features(self, x):
     x = self.conv1(x)
     x = self.bn1(x)
     x = self.relu(x)
@@ -150,11 +151,17 @@ class ResNet(nn.Module):
     x = self.layer2(x)
     x = self.layer3(x)
     x = self.layer4(x)
+    return x
 
+  def logits(self, x):
     x = self.avgpool(x)
     x = x.view(x.size(0), -1)
-    x = self.fc(x)
+    x = self.last_linear(x)
+    return x
 
+  def forward(self, x):
+    x = self.features(x)
+    x = self.logits(x)
     return x
 
 

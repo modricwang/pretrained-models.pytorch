@@ -2,6 +2,7 @@ from .version import __version__
 
 from . import models
 from . import datasets
+
 from .models.utils import pretrained_settings
 from .models.utils import model_names
 
@@ -50,3 +51,5 @@ from .models.senet import se_resnet101
 from .models.senet import se_resnet152
 from .models.senet import se_resnext50_32x4d
 from .models.senet import se_resnext101_32x4d
+from .models.pnasnet import pnasnet5large
+from .models.polynet import polynet
